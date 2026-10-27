@@ -176,3 +176,15 @@ def test_python_exe(monkeypatch):
     monkeypatch.delenv('RVT_SHEETS_PY', raising=False)
     assert paths.python_exe() == sys.executable
     assert paths.add_to_path('/nonexistent-dir-xyz') == []
+
+
+def test_fonts_find_or_none(tmp_path, monkeypatch):
+    from rvtplat import fonts
+    d = tmp_path / 'f'; d.mkdir(); (d / 'arial.ttf').write_bytes(b'x'); (d / 'arialbd.ttf').write_bytes(b'x')
+    monkeypatch.setenv('RVT_FONT_DIRS', str(d))
+    monkeypatch.setattr(fonts, '_fc', lambda n, b: None)
+    fonts._INDEX.clear()
+    assert fonts.find('Arial')[0] == str(d / 'arial.ttf')
+    assert fonts.find('Arial', True)[0] == str(d / 'arialbd.ttf')
+    assert fonts.find('Nonexistent Font Zzz', False) is None or fonts.find('Nonexistent Font Zzz')[1] != 'Nonexistent Font Zzz'
+    fonts._INDEX.clear()
