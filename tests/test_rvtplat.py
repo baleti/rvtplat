@@ -155,3 +155,24 @@ def test_timeout_helper():
     assert proc.call_with_timeout(lambda x: x + 1, 2, 1) == 2
     with pytest.raises(TimeoutError):
         proc.call_with_timeout(time.sleep, 0.2, 5)
+
+
+def test_paths_env_and_siblings(tmp_path, monkeypatch):
+    from rvtplat import paths
+    rd = tmp_path / 'rd'; rd.mkdir(); (rd / 'rvt_geometry.py').write_text('')
+    monkeypatch.setenv('RVT_READER_DIR', str(rd))
+    assert paths.reader_dir() == str(rd)
+    monkeypatch.delenv('RVT_READER_DIR')
+    (tmp_path / 'rvt-research').mkdir(); (tmp_path / 'rvt-research' / 'rvt_geometry.py').write_text('')
+    (tmp_path / 'app').mkdir()
+    assert paths.reader_dir(str(tmp_path / 'app')) == str(tmp_path / 'rvt-research')
+    s = tmp_path / 'rvt-sheets' / 'rvtsheets'; s.mkdir(parents=True); (s / '__init__.py').write_text('')
+    monkeypatch.delenv('RVTSHEETS', raising=False)
+    assert paths.sheets_dir(str(tmp_path / 'app')) == str(tmp_path / 'rvt-sheets')
+
+
+def test_python_exe(monkeypatch):
+    from rvtplat import paths
+    monkeypatch.delenv('RVT_SHEETS_PY', raising=False)
+    assert paths.python_exe() == sys.executable
+    assert paths.add_to_path('/nonexistent-dir-xyz') == []
