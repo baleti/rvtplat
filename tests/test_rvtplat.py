@@ -188,3 +188,20 @@ def test_fonts_find_or_none(tmp_path, monkeypatch):
     assert fonts.find('Arial', True)[0] == str(d / 'arialbd.ttf')
     assert fonts.find('Nonexistent Font Zzz', False) is None or fonts.find('Nonexistent Font Zzz')[1] != 'Nonexistent Font Zzz'
     fonts._INDEX.clear()
+
+
+SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="297mm" viewBox="0 0 210 297"><rect x="10" y="10" width="190" height="277" fill="none" stroke="black"/><text x="20" y="40" font-size="12">Grüße</text></svg>'
+
+
+def test_render_png_pdf(tmp_path):
+    if not browser.find():
+        pytest.skip('no browser')
+    from rvtplat import render
+    s = tmp_path / 'a.svg'; s.write_text(SVG, encoding='utf-8')
+    p = render.svg_to_png(str(s), str(tmp_path / 'a.png'), width=400)
+    assert open(p, 'rb').read(8) == b'\x89PNG\r\n\x1a\n'
+    import struct
+    d = open(p, 'rb').read(32); w, h = struct.unpack('>II', d[16:24])
+    assert w == 400 and abs(h - 400 * 297 / 210) <= 2
+    q = render.svg_to_pdf(str(s), str(tmp_path / 'a.pdf'))
+    assert open(q, 'rb').read(5) == b'%PDF-'
