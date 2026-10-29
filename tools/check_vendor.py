@@ -8,7 +8,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = os.path.join(HERE, 'rvtplat')
 VENDORED = ['~/src/rvt-viewer/rvtballet/_vendor/rvtplat', '~/dwg-viewer/dwgballet/_vendor/rvtplat', '~/src/rvt-sheets/rvtsheets/_vendor/rvtplat']
 PARTIAL = ['~/dwg-research/dwgio.py', '~/rvt-research/rvtio.py']
-FUNCS = ('replace_retry', 'atomic_write', 'long_path')
+FUNCS = ('replace_retry', 'atomic_write', 'long_path', 'full_fsync')
 
 
 def sha(b): return hashlib.sha1(b).hexdigest()
