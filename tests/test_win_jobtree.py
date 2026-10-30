@@ -37,3 +37,31 @@ def test_killing_parent_ends_child_and_grandchild(tmp_path):
         time.sleep(0.1)
     assert not _alive(c), 'child survived its parent'
     assert not _alive(g), 'grandchild survived its parent'
+
+
+SELF = textwrap.dedent('''
+    import sys, subprocess, time
+    sys.path.insert(0, %r)
+    from rvtplat import proc
+    ok = proc.adopt_self_kill_on_close()
+    c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])      # plain Popen: no popen_capped
+    open(sys.argv[1], 'w').write('%%d %%d' %% (c.pid, int(ok)))
+    time.sleep(120)
+''')
+
+
+def test_adopt_self_kills_plain_children(tmp_path):
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    f = str(tmp_path / 'pids')
+    p = subprocess.Popen([sys.executable, '-c', SELF % root, f])
+    t0 = time.time()
+    while time.time() - t0 < 30 and not (os.path.exists(f) and open(f).read()):
+        time.sleep(0.1)
+    c, ok = map(int, open(f).read().split())
+    assert ok == 1, 'could not adopt (nested job refused?)'
+    assert _alive(c)
+    p.kill(); p.wait(10)
+    t0 = time.time()
+    while time.time() - t0 < 10 and _alive(c):
+        time.sleep(0.1)
+    assert not _alive(c), 'plain child survived the death of the adopting process'
