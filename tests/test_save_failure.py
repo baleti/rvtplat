@@ -130,3 +130,25 @@ def test_mode_kept_and_readonly_refused_unless_allowed(tmp_path):
     assert b.read_bytes() == b"1" and not (tmp_path / "b.dwg.bak").exists()
     fsio.safe_save(str(b), b"2", allow_readonly=True)
     assert b.read_bytes() == b"2" and stat.S_IMODE(os.stat(b).st_mode) == 0o444
+
+
+def test_safe_save_does_not_recreate_a_vanished_folder(tmp_path):
+    p = str(tmp_path / "usb" / "plan.dwg")
+    with pytest.raises(OSError):
+        fsio.safe_save(p, b"x")
+    assert os.listdir(tmp_path) == []
+    fsio.atomic_write(p, b"cache")          # caches still create their folder
+    assert open(p, "rb").read() == b"cache"
+
+
+def test_readonly_directory_fails_cleanly(tmp_path):
+    d = tmp_path / "ro"; d.mkdir(); p = str(d / "a.rvt")
+    fsio.atomic_write(p, b"orig"); os.chmod(d, 0o555)
+    try:
+        if os.access(d, os.W_OK):
+            pytest.skip("root ignores directory modes")
+        with pytest.raises(OSError):
+            fsio.safe_save(p, b"new")
+        assert open(p, "rb").read() == b"orig" and os.listdir(d) == ["a.rvt"]
+    finally:
+        os.chmod(d, 0o755)

@@ -100,13 +100,14 @@ def _follow_link(path):
     return path
 
 
-def atomic_write(path, data, mode=None, encoding='utf-8', newline=None, clear_readonly=False, fsync=True):
+def atomic_write(path, data, mode=None, encoding='utf-8', newline=None, clear_readonly=False, fsync=True, makedirs=True):
     """Write `data` (bytes, or str encoded with `encoding`) to `path` atomically; returns path.
     The temporary file lives in the destination directory (same volume, so the rename is atomic).
     str is written with newline translation disabled unless `newline` is given."""
     path = _follow_link(os.fspath(path))
     d = os.path.dirname(os.path.abspath(path))
-    os.makedirs(long_path(d), exist_ok=True)
+    if makedirs:
+        os.makedirs(long_path(d), exist_ok=True)
     if isinstance(data, str):
         data = data.encode(encoding)
         if newline not in (None, '', '\n'):
@@ -145,11 +146,12 @@ def atomic_write_with(path, writer, **kw):
     return atomic_write(path, buf.getvalue(), **kw)
 
 
-def atomic_write_stream(path, writer, clear_readonly=False, fsync=True):
+def atomic_write_stream(path, writer, clear_readonly=False, fsync=True, makedirs=True):
     """like atomic_write_with but streams straight to the temp file (no copy in RAM, for big caches)"""
     path = _follow_link(os.fspath(path))
     d = os.path.dirname(os.path.abspath(path))
-    os.makedirs(long_path(d), exist_ok=True)
+    if makedirs:
+        os.makedirs(long_path(d), exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(path)[:40] + '.', suffix='.tmp', dir=long_path(d))
     try:
         with os.fdopen(fd, 'wb') as f:
@@ -192,6 +194,7 @@ def safe_save(path, data, keep_backup=True, allow_readonly=False, **kw):
                 pass
     if ro_mode is not None:
         kw.setdefault('mode', ro_mode)
+    kw.setdefault('makedirs', False)      # a USER document's folder that vanished (unplugged drive, moved folder) must fail, not be re-created with a stray copy
     return atomic_write(path, data, clear_readonly=allow_readonly, **kw)
 
 
