@@ -169,22 +169,30 @@ def atomic_write_stream(path, writer, clear_readonly=False, fsync=True):
     return path
 
 
-def safe_save(path, data, keep_backup=True, **kw):
+def safe_save(path, data, keep_backup=True, allow_readonly=False, **kw):
     """overwrite a USER document (.rvt/.dwg): atomic_write, plus a one-generation `.bak` copy of the old
     file next to it (copy, not rename, so the original is never absent). Backup failures never block the save."""
     import shutil
     path = _follow_link(os.fspath(path))
+    ro_mode = None
+    if os.path.exists(long_path(path)) and is_readonly(path):
+        if not allow_readonly:        # same policy as savegate: a file the user marked read-only is not silently overwritten (and made writable)
+            raise PermissionError(errno.EACCES, 'target is read-only: clear the flag, save elsewhere, or pass allow_readonly=True', path)
+        ro_mode = stat.S_IMODE(os.stat(long_path(path)).st_mode)      # overwritten on request, flag kept
     if keep_backup and os.path.isfile(long_path(path)):
         bt = path + '.bak.%d.tmp' % os.getpid()      # copy aside then rename: a crash mid-copy must not leave a torn .bak (the previous generation)
         try:
             shutil.copy2(long_path(path), long_path(bt))
+            os.chmod(long_path(bt), os.stat(long_path(bt)).st_mode | stat.S_IWRITE)      # copy2 keeps a read-only flag; a read-only .bak could not be replaced on Windows
             replace_retry(bt, path + '.bak')
         except OSError:
             try:
                 os.remove(long_path(bt))
             except OSError:
                 pass
-    return atomic_write(path, data, clear_readonly=False, **kw)
+    if ro_mode is not None:
+        kw.setdefault('mode', ro_mode)
+    return atomic_write(path, data, clear_readonly=allow_readonly, **kw)
 
 
 def read_retry(path, mode='rb', tries=8, delay=0.02, **kw):

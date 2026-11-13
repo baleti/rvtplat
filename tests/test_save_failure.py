@@ -115,3 +115,18 @@ def test_readonly_target_on_windows_fails_fast_but_sharing_retries(tmp_path, mon
     with pytest.raises(PermissionError):
         fsio.replace_retry(str(tmp_path / "x"), str(p), tries=4, delay=0.001)
     assert n["c"] == 4
+
+
+def test_mode_kept_and_readonly_refused_unless_allowed(tmp_path):
+    import stat
+    a = tmp_path / "a.rvt"; a.write_bytes(b"1"); os.chmod(a, 0o640)
+    fsio.safe_save(str(a), b"2")
+    assert stat.S_IMODE(os.stat(a).st_mode) == 0o640 and a.read_bytes() == b"2"
+    b = tmp_path / "b.dwg"; b.write_bytes(b"1"); os.chmod(b, 0o444)
+    if os.access(b, os.W_OK):
+        pytest.skip("running as a user that ignores read-only (root)")
+    with pytest.raises(PermissionError):
+        fsio.safe_save(str(b), b"2")
+    assert b.read_bytes() == b"1" and not (tmp_path / "b.dwg.bak").exists()
+    fsio.safe_save(str(b), b"2", allow_readonly=True)
+    assert b.read_bytes() == b"2" and stat.S_IMODE(os.stat(b).st_mode) == 0o444
