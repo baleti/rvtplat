@@ -35,6 +35,13 @@ def _busy(e):
     return (w in _WIN_BUSY) or (e.errno in (errno.EACCES, errno.EBUSY, errno.EPERM) and _WIN)
 
 
+def _dst_readonly_attr(p):
+    try:
+        return not (os.stat(p).st_mode & stat.S_IWRITE)
+    except OSError:
+        return False
+
+
 def replace_retry(src, dst, tries=30, delay=0.02, max_delay=0.5, clear_readonly=False, _sleep=time.sleep):
     """os.replace with jittered backoff on Windows-style sharing violations (about 12 s total at the defaults; 12 tries / 3 s was exhausted by 8 concurrent writers on a slow Windows VM)"""
     src, dst = long_path(src), long_path(dst)
@@ -46,6 +53,8 @@ def replace_retry(src, dst, tries=30, delay=0.02, max_delay=0.5, clear_readonly=
         except OSError as e:
             if not _busy(e) or i == tries - 1:
                 raise
+            if _WIN and not clear_readonly and getattr(e, 'winerror', None) == 5 and _dst_readonly_attr(dst):
+                raise      # access denied because the TARGET is read-only: waiting cannot help (a sharing violation is 32/33, retried)
             if clear_readonly:
                 try:
                     os.chmod(dst, os.stat(dst).st_mode | stat.S_IWRITE)

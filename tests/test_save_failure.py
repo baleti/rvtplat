@@ -94,3 +94,24 @@ def test_non_busy_replace_error_fails_fast(tmp_path, monkeypatch):
         fsio.atomic_write(p, b"new")
     monkeypatch.undo()
     assert time.time() - t < 1 and open(p, "rb").read() == b"orig" and os.listdir(tmp_path) == ["a.rvt"]
+
+
+def test_readonly_target_on_windows_fails_fast_but_sharing_retries(tmp_path, monkeypatch):
+    import time
+    p = tmp_path / "ro.dwg"; p.write_bytes(b"orig"); os.chmod(p, 0o444)
+    monkeypatch.setattr(fsio, "_WIN", True)
+    def denied(s, d):
+        e = PermissionError(13, "denied"); e.winerror = 5; raise e
+    monkeypatch.setattr(os, "replace", denied)
+    t = time.time()
+    with pytest.raises(PermissionError):
+        fsio.replace_retry(str(tmp_path / "x"), str(p))
+    assert time.time() - t < 1
+    # sharing violation (32) on a writable target still retries
+    os.chmod(p, 0o644); n = {"c": 0}
+    def share(s, d):
+        n["c"] += 1; e = PermissionError(13, "in use"); e.winerror = 32; raise e
+    monkeypatch.setattr(os, "replace", share)
+    with pytest.raises(PermissionError):
+        fsio.replace_retry(str(tmp_path / "x"), str(p), tries=4, delay=0.001)
+    assert n["c"] == 4
