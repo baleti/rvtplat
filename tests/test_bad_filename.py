@@ -6,7 +6,7 @@ F = fsio.bad_filename
 
 def test_bad_names():
     for n in ('CON.rvt', 'con.rvt', 'NUL', 'com1.txt.rvt', 'LPT9.rvt', 'a.rvt.', 'a.rvt ', 'a:b.rvt', 'a?.rvt', 'x*.rvt',
-              'a\x01.rvt', 'a|b.rvt', 'é' * 130 + '.rvt', '', '..', 'CONIN$.rvt'):
+              'a\x01.rvt', 'a|b.rvt', 'é' * 130 + '.rvt', '', '..', 'CONIN$.rvt', 'COM\u00b9.rvt', 'lpt\u00b2', 'COM\u00b3.dwg'):
         assert F(n), n
 
 
@@ -65,3 +65,11 @@ def test_network_fs_kind_darwin_branch(monkeypatch):
     assert fsio.network_fs_kind("/Volumes/share/inner/a.rvt") == ""
     assert fsio.network_fs_kind("/Volumes/fuse/a.rvt") == "macfuse"
     assert fsio.network_fs_kind("/Users/u/a.rvt") == ""
+
+
+def test_bad_filename_never_raises_on_lone_surrogates():
+    assert F("a\ud800b.rvt") == ""                       # unpaired UTF-16 unit (valid on NTFS)
+    assert F("a\udc80b.rvt") == ""                       # an escaped raw byte of a Linux name
+    assert F("\udcff" * 200 + ".rvt") == ""              # 200 raw bytes: below 255, must not be over-counted
+    assert F("\udcff" * 300 + ".rvt")                    # 300 raw bytes: too long
+    assert F("\ud800" * 100)                             # 100 lone units = 300 bytes in UTF-8

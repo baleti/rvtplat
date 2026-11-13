@@ -303,7 +303,7 @@ def network_fs_kind(path):
         return ''
 
 
-_RESERVED = {'CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$'} | {'COM%d' % i for i in range(1, 10)} | {'LPT%d' % i for i in range(1, 10)}
+_RESERVED = {'CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$'} | {'COM%d' % i for i in range(1, 10)} | {'LPT%d' % i for i in range(1, 10)} | {p + c for p in ('COM', 'LPT') for c in '\u00b9\u00b2\u00b3'}
 
 
 def bad_filename(name):
@@ -318,6 +318,10 @@ def bad_filename(name):
         return 'the file name may not end with a dot or a space (Windows would drop it and write a different file)'
     if name.split('.')[0].rstrip(' ').upper() in _RESERVED:
         return 'the file name is a reserved Windows device name (%s)' % name.split('.')[0].upper()
-    if len(name.encode('utf-8', 'surrogateescape')) > 255:      # a Linux name with non-UTF-8 bytes arrives as lone surrogates
+    try:
+        nbytes = len(name.encode('utf-8', 'surrogateescape'))      # non-UTF-8 bytes of a Linux name arrive as U+DC80..DCFF: 1 byte each
+    except UnicodeEncodeError:
+        nbytes = len(name.encode('utf-8', 'surrogatepass'))        # an unpaired UTF-16 unit (NTFS allows them): counted, never raises
+    if nbytes > 255:
         return 'the file name is longer than 255 bytes'
     return ''
