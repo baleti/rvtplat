@@ -50,3 +50,18 @@ def test_network_fs_kind_windows_branch(monkeypatch):
     assert fsio.network_fs_kind("Z:\\proj\\a.rvt") == "remote-drive"
     assert fsio.network_fs_kind("C:\\proj\\a.rvt") == ""
     assert fsio.network_fs_kind("\\\\?\\C:\\proj\\a.rvt") == ""
+
+
+def test_network_fs_kind_darwin_branch(monkeypatch):
+    import subprocess, types
+    out = ("/dev/disk3s1 on / (apfs, local, journaled)\n"
+           "//user@nas.local/share on /Volumes/share (smbfs, nodev, nosuid, mounted by user)\n"
+           "/dev/disk4s1 on /Volumes/share/inner (apfs, local)\n"
+           "macfuse@0 on /Volumes/fuse (macfuse, nodev)\n")
+    monkeypatch.setattr(fsio.sys, "platform", "darwin")
+    monkeypatch.setattr(fsio.os.path, "realpath", lambda p: p)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: types.SimpleNamespace(stdout=out))
+    assert fsio.network_fs_kind("/Volumes/share/a.rvt") == "smbfs"
+    assert fsio.network_fs_kind("/Volumes/share/inner/a.rvt") == ""
+    assert fsio.network_fs_kind("/Volumes/fuse/a.rvt") == "macfuse"
+    assert fsio.network_fs_kind("/Users/u/a.rvt") == ""
