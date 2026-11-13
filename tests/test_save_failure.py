@@ -40,3 +40,42 @@ def test_save_through_symlink_updates_target(tmp_path):
     fsio.safe_save(str(link), b"new")
     assert os.path.islink(link) and real.read_bytes() == b"new"
     assert (tmp_path / "real.dwg.bak").read_bytes() == b"old"
+
+
+def test_enospc_during_write_keeps_original_and_cleans_temp(tmp_path):
+    import errno
+    p = str(tmp_path / "m.rvt")
+    fsio.atomic_write(p, b"orig")
+    def writer(f):
+        f.write(b"partial")
+        raise OSError(errno.ENOSPC, "No space left on device")
+    with pytest.raises(OSError):
+        fsio.atomic_write_stream(p, writer)
+    assert open(p, "rb").read() == b"orig"
+    assert os.listdir(tmp_path) == ["m.rvt"]
+
+
+def test_transient_sharing_violation_then_success(tmp_path, monkeypatch):
+    p = str(tmp_path / "m.dwg")
+    fsio.atomic_write(p, b"orig")
+    real = os.replace
+    n = {"c": 0}
+    def flaky(s, d):
+        n["c"] += 1
+        if n["c"] <= 3:
+            raise PermissionError(13, "in use")
+        return real(s, d)
+    monkeypatch.setattr(os, "replace", flaky)
+    fsio.atomic_write(p, b"new")
+    monkeypatch.undo()
+    assert n["c"] == 4 and open(p, "rb").read() == b"new" and os.listdir(tmp_path) == ["m.dwg"]
+
+
+def test_cloud_placeholder_flags(tmp_path, monkeypatch):
+    p = tmp_path / "x.rvt"; p.write_bytes(b"1")
+    monkeypatch.setattr(fsio, "_WIN", True)
+    class St:  # stand-in stat result
+        def __init__(s, a): s.st_file_attributes = a
+    for attrs, want in ((0x400000, True), (0x1000, True), (0x20, False)):
+        monkeypatch.setattr(os, "stat", lambda q, a=attrs: St(a))
+        assert fsio.is_cloud_placeholder(str(p)) is want
