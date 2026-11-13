@@ -9,7 +9,7 @@ Windows specifics handled here:
   * OneDrive/Dropbox placeholders: the destination is replaced, never opened for in-place update.
 Data is flushed and fsync'ed before the rename, and the directory is fsync'ed on POSIX, so a crash or
 power loss leaves either the old or the new file, never a torn one."""
-import os, sys, random, time, stat, tempfile, errno
+import os, sys, random, time, stat, tempfile, errno, threading
 
 _WIN = sys.platform == 'win32'
 # Windows sharing/permission errors that mean "somebody else has it open right now"
@@ -182,7 +182,7 @@ def safe_save(path, data, keep_backup=True, allow_readonly=False, **kw):
             raise PermissionError(errno.EACCES, 'target is read-only: clear the flag, save elsewhere, or pass allow_readonly=True', path)
         ro_mode = stat.S_IMODE(os.stat(long_path(path)).st_mode)      # overwritten on request, flag kept
     if keep_backup and os.path.isfile(long_path(path)):
-        bt = path + '.bak.%d.tmp' % os.getpid()      # copy aside then rename: a crash mid-copy must not leave a torn .bak (the previous generation)
+        bt = path + '.bak.%d.%x.%s.tmp' % (os.getpid(), threading.get_ident(), os.urandom(3).hex())      # copy aside then rename: a crash mid-copy must not leave a torn .bak (the previous generation)
         try:
             shutil.copy2(long_path(path), long_path(bt))
             os.chmod(long_path(bt), os.stat(long_path(bt)).st_mode | stat.S_IWRITE)      # copy2 keeps a read-only flag; a read-only .bak could not be replaced on Windows
