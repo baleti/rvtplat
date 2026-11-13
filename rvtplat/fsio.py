@@ -230,7 +230,7 @@ def is_cloud_placeholder(path):
 def is_readonly(path):
     try:
         return not os.access(long_path(path), os.W_OK)
-    except OSError:
+    except (OSError, ValueError, UnicodeError):      # NUL / unencodable path: not provably read-only
         return False
 
 
@@ -259,7 +259,7 @@ def changed_since(path, fp):
     content hash is equal (touch, copy, sync tool rewrote the stamp)."""
     try:
         now = fingerprint(path)
-    except OSError:
+    except (OSError, ValueError, UnicodeError):      # unreadable or malformed path counts as changed (the safe answer for a guard)
         return True
     return now[0] != fp[0] or now[2] != fp[2]
 
