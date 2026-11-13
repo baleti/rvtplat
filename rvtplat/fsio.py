@@ -215,6 +215,9 @@ def read_retry(path, mode='rb', tries=8, delay=0.02, **kw):
 def is_cloud_placeholder(path):
     """True for a OneDrive/Dropbox 'online-only' file whose content is not on disk yet (Windows reparse /
     FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS 0x400000, OFFLINE 0x1000). Reading it triggers a download."""
+    if sys.platform == 'darwin':          # iCloud Drive / File Provider 'Optimise storage': an evicted file has SF_DATALESS (0x40000000) set; reading it downloads it
+        try: return bool(os.stat(path).st_flags & 0x40000000)
+        except (OSError, AttributeError): return False
     if not _WIN:
         return False
     try:
@@ -259,3 +262,62 @@ def changed_since(path, fp):
     except OSError:
         return True
     return now[0] != fp[0] or now[2] != fp[2]
+
+
+def network_fs_kind(path):
+    """'' for a local file system; a short label when the path is on a network share (Windows: UNC or a drive whose type is
+    DRIVE_REMOTE; macOS: smbfs/nfs/afpfs/webdav/fuse mounts from `mount`; Linux: /proc/self/mountinfo). Never raises."""
+    try:
+        rp = os.path.abspath(path)
+        if _WIN:
+            if rp.startswith('\\\\') and not rp.startswith('\\\\?\\'):
+                return 'unc'
+            if rp.startswith('\\\\?\\UNC\\'):
+                return 'unc'
+            import ctypes
+            drv = os.path.splitdrive(rp.replace('\\\\?\\', ''))[0]
+            if len(drv) == 2 and drv[1] == ':':
+                t = ctypes.windll.kernel32.GetDriveTypeW(drv + '\\')
+                return 'remote-drive' if t == 4 else ''
+            return ''
+        rp = os.path.realpath(path)
+        net = ('nfs', 'nfs4', 'cifs', 'smb3', 'smbfs', '9p', 'davfs', 'afs', 'afpfs', 'webdav', 'ncpfs', 'ceph', 'glusterfs', 'lustre')
+        best = ('', '')
+        if sys.platform == 'darwin':
+            import subprocess, re
+            out = subprocess.run(['/sbin/mount'], capture_output=True, text=True, timeout=5).stdout
+            for ln in out.splitlines():
+                m = re.match(r'.* on (.+) \(([^,)]+)', ln)
+                if m and (rp == m.group(1) or rp.startswith(m.group(1).rstrip('/') + '/')) and len(m.group(1)) >= len(best[0]):
+                    best = (m.group(1), m.group(2))
+        else:
+            for ln in open('/proc/self/mountinfo'):
+                f = ln.split(' ')
+                i = f.index('-')
+                mp = f[4].replace('\\040', ' ')
+                if (rp == mp or rp.startswith(mp.rstrip('/') + '/')) and len(mp) >= len(best[0]):
+                    best = (mp, f[i + 1])
+        ty = best[1]
+        return ty if ty.startswith('fuse') or ty in net or ty in ('osxfuse', 'macfuse') else ''
+    except Exception:
+        return ''
+
+
+_RESERVED = {'CON', 'PRN', 'AUX', 'NUL', 'CONIN$', 'CONOUT$'} | {'COM%d' % i for i in range(1, 10)} | {'LPT%d' % i for i in range(1, 10)}
+
+
+def bad_filename(name):
+    """'' when `name` (a single path component) is safe on Windows, macOS and Linux; else the reason. Applied on every OS so a
+    file saved on Linux can be opened on Windows: device names (CON.dwg opens the console), trailing dot/space (silently
+    stripped, so a different file is written), characters Windows forbids, control characters, over-long names."""
+    if not name or name in ('.', '..'):
+        return 'empty file name'
+    if any(ord(c) < 32 or c in '<>:"/\\|?*' for c in name):
+        return 'the file name contains a character that is not allowed on Windows (< > : " / \\ | ? * or a control character)'
+    if name[-1] in '. ':
+        return 'the file name may not end with a dot or a space (Windows would drop it and write a different file)'
+    if name.split('.')[0].rstrip(' ').upper() in _RESERVED:
+        return 'the file name is a reserved Windows device name (%s)' % name.split('.')[0].upper()
+    if len(name.encode('utf-8', 'surrogateescape')) > 255:      # a Linux name with non-UTF-8 bytes arrives as lone surrogates
+        return 'the file name is longer than 255 bytes'
+    return ''
