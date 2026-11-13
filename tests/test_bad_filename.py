@@ -35,3 +35,18 @@ def test_network_fs_kind_linux_mountinfo(monkeypatch, tmp_path):
     assert fsio.network_fs_kind("/mnt/my nas/a.rvt") == "nfs4"
     assert fsio.network_fs_kind("/mnt/share/local/a.rvt") == ""      # a local disk mounted INSIDE a share: longest mount point wins
     assert fsio.network_fs_kind("/home/u/a.rvt") == ""
+
+
+def test_network_fs_kind_windows_branch(monkeypatch):
+    import ntpath, types, ctypes
+    monkeypatch.setattr(fsio, "_WIN", True)
+    monkeypatch.setattr(fsio.os.path, "abspath", lambda p: p)
+    monkeypatch.setattr(fsio.os.path, "splitdrive", ntpath.splitdrive)
+    types_by_drive = {"Z:\\": 4, "C:\\": 3}
+    fake = types.SimpleNamespace(kernel32=types.SimpleNamespace(GetDriveTypeW=lambda d: types_by_drive.get(d, 1)))
+    monkeypatch.setattr(ctypes, "windll", fake, raising=False)
+    assert fsio.network_fs_kind("\\\\srv\\share\\a.rvt") == "unc"
+    assert fsio.network_fs_kind("\\\\?\\UNC\\srv\\share\\a.rvt") == "unc"
+    assert fsio.network_fs_kind("Z:\\proj\\a.rvt") == "remote-drive"
+    assert fsio.network_fs_kind("C:\\proj\\a.rvt") == ""
+    assert fsio.network_fs_kind("\\\\?\\C:\\proj\\a.rvt") == ""
