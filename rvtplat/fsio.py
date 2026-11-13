@@ -81,11 +81,21 @@ def _fsync_dir(path):
         pass
 
 
+def _follow_link(path):
+    """a symlinked document is saved THROUGH the link: os.replace on the link itself would swap the link for a regular file and leave the real file stale"""
+    try:
+        if os.path.islink(path):
+            return os.path.realpath(path)
+    except OSError:
+        pass
+    return path
+
+
 def atomic_write(path, data, mode=None, encoding='utf-8', newline=None, clear_readonly=False, fsync=True):
     """Write `data` (bytes, or str encoded with `encoding`) to `path` atomically; returns path.
     The temporary file lives in the destination directory (same volume, so the rename is atomic).
     str is written with newline translation disabled unless `newline` is given."""
-    path = os.fspath(path)
+    path = _follow_link(os.fspath(path))
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(long_path(d), exist_ok=True)
     if isinstance(data, str):
@@ -128,7 +138,7 @@ def atomic_write_with(path, writer, **kw):
 
 def atomic_write_stream(path, writer, clear_readonly=False, fsync=True):
     """like atomic_write_with but streams straight to the temp file (no copy in RAM, for big caches)"""
-    path = os.fspath(path)
+    path = _follow_link(os.fspath(path))
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(long_path(d), exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(path)[:40] + '.', suffix='.tmp', dir=long_path(d))
@@ -154,7 +164,7 @@ def safe_save(path, data, keep_backup=True, **kw):
     """overwrite a USER document (.rvt/.dwg): atomic_write, plus a one-generation `.bak` copy of the old
     file next to it (copy, not rename, so the original is never absent). Backup failures never block the save."""
     import shutil
-    path = os.fspath(path)
+    path = _follow_link(os.fspath(path))
     if keep_backup and os.path.isfile(long_path(path)):
         try:
             shutil.copy2(long_path(path), long_path(path + '.bak'))

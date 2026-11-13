@@ -27,3 +27,16 @@ def test_failed_replace_leaves_original_and_no_temp(tmp_path, monkeypatch):
     monkeypatch.undo()
     assert open(p, "rb").read() == b"orig"
     assert os.listdir(tmp_path) == ["a.dwg"]
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks")
+def test_save_through_symlink_updates_target(tmp_path):
+    real = tmp_path / "real.dwg"; link = tmp_path / "link.dwg"
+    real.write_bytes(b"old")
+    try:
+        os.symlink(real, link)
+    except OSError:
+        pytest.skip("no symlink privilege")
+    fsio.safe_save(str(link), b"new")
+    assert os.path.islink(link) and real.read_bytes() == b"new"
+    assert (tmp_path / "real.dwg.bak").read_bytes() == b"old"
