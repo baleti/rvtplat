@@ -175,10 +175,15 @@ def safe_save(path, data, keep_backup=True, **kw):
     import shutil
     path = _follow_link(os.fspath(path))
     if keep_backup and os.path.isfile(long_path(path)):
+        bt = path + '.bak.%d.tmp' % os.getpid()      # copy aside then rename: a crash mid-copy must not leave a torn .bak (the previous generation)
         try:
-            shutil.copy2(long_path(path), long_path(path + '.bak'))
+            shutil.copy2(long_path(path), long_path(bt))
+            replace_retry(bt, path + '.bak')
         except OSError:
-            pass
+            try:
+                os.remove(long_path(bt))
+            except OSError:
+                pass
     return atomic_write(path, data, clear_readonly=False, **kw)
 
 
