@@ -79,3 +79,18 @@ def test_cloud_placeholder_flags(tmp_path, monkeypatch):
     for attrs, want in ((0x400000, True), (0x1000, True), (0x20, False)):
         monkeypatch.setattr(os, "stat", lambda q, a=attrs: St(a))
         assert fsio.is_cloud_placeholder(str(p)) is want
+
+
+def test_non_busy_replace_error_fails_fast(tmp_path, monkeypatch):
+    """a non-sharing error (e.g. EXDEV, ENOENT) must not burn the 12 s retry budget"""
+    import errno, time
+    p = str(tmp_path / "a.rvt")
+    fsio.atomic_write(p, b"orig")
+    def boom(s, d):
+        raise OSError(errno.EXDEV, "cross-device")
+    monkeypatch.setattr(os, "replace", boom)
+    t = time.time()
+    with pytest.raises(OSError):
+        fsio.atomic_write(p, b"new")
+    monkeypatch.undo()
+    assert time.time() - t < 1 and open(p, "rb").read() == b"orig" and os.listdir(tmp_path) == ["a.rvt"]
