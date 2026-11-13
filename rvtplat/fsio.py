@@ -234,7 +234,7 @@ def is_readonly(path):
 def fingerprint(path, hash_limit=64 << 20):
     """(size, mtime_ns, sha1) of a file. mtime alone is not enough: FAT/exFAT keeps 2 s, SMB and some
     sync tools round, and an external edit within the same tick keeps the same mtime. The hash decides
-    whenever size and mtime agree (files above hash_limit hash only head+tail 1 MiB + size)."""
+    whenever size and mtime agree (files above hash_limit hash only head+tail 1 MiB + size); above that limit a same-size edit in the middle of the file with an unchanged mtime goes unseen, so use this for caches and change hints only: a save guard for a user document must hash the whole file, as savegate.guard does)."""
     import hashlib
     p = long_path(path)
     st = os.stat(p)
